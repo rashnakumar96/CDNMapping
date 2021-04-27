@@ -37,6 +37,28 @@ def cdfData(file,cdn,self_similarity):
 
 	return sortedData,pData
 
+def plot_self_similarity2(dict,cdn):
+	local_data=dict[cdn]["local"]
+	distant_data=dict[cdn]["distant"]
+
+	sortedDataLocal=np.sort(local_data)
+	pDataLocal=1. * np.arange(len(sortedDataLocal))/(len(sortedDataLocal)-1)		
+
+	sortedDataDistant=np.sort(distant_data)
+	pDataDistant=1. * np.arange(len(sortedDataDistant))/(len(sortedDataDistant)-1)	
+
+	plt.plot(sortedDataLocal,pDataLocal,color='c',label="localResolver;/24")
+	plt.plot(sortedDataDistant,pDataDistant,color='m',label="DistantResolver;/24")
+
+	plt.legend()
+	plt.xlabel("cosineSimilarity")
+	plt.ylabel("CDF")
+	plt.title(cdn)
+	plt.margins(0.02)
+	plt.savefig("graphs/self_cosine_similarityCDF"+cdn)
+	plt.clf()
+
+
 if __name__ == "__main__":
 
 	country="US"
@@ -113,4 +135,11 @@ if __name__ == "__main__":
 		plt.margins(0.02)
 		plt.savefig("graphs/self-similarityCDF"+cdn)
 		plt.clf()
+
+	self_similarityDict=json.load(open("results/self_similarityDict_"+country+".json"))
+
+	for cdn in cdns:
+		plot_self_similarity2(self_similarityDict,cdn)
+
+	
 

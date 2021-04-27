@@ -3,6 +3,12 @@ import json
 import ipaddress
 import dns.resolver
 import tldextract
+import random
+import matplotlib as mpl
+mpl.use("agg")
+import matplotlib.pyplot as plt
+import numpy as np
+
 
 
 
@@ -28,7 +34,8 @@ def cosSimilarity(vec1,vec2):
 	cosine = dot / (len_a * len_b)    
 	return cosine    
 
-def ip_prefix_grouping(approach,file,country,prefix,resultname):
+# def ip_prefix_grouping(approach,file,country,prefix,resultname):
+def ip_prefix_grouping(file,prefix):
 	dict={}
 	for domain in file:
 		uniquePrefixes={}
@@ -41,8 +48,68 @@ def ip_prefix_grouping(approach,file,country,prefix,resultname):
 			else:
 				uniquePrefixes[ip_24_prefix]+=file[domain][ip]
 		dict[domain]=uniquePrefixes
-	with open("results/"+resultname+approach+"_"+country+".json", 'w') as fp:
-		json.dump(dict, fp)
+	return dict
+	
+
+def self_similarity2(file,approachName,dict,cdns):
+	for cdn in file:
+		if cdn not in cdns:
+			continue
+		_dict=ip_prefix_grouping(file[cdn],"/24")
+		print (cdn,len(_dict.keys()))
+		domainList=[]
+		for domain in _dict.keys():
+			domainList.append(domain)
+
+		random.shuffle(domainList)
+
+		half=int(len(domainList)/2)
+		list1=domainList[:half]
+		list2=domainList[half:]
+		if len(list1)>len(list2):
+			list1=list1[:-1]
+		elif len(list1)<len(list2):
+			list2=list2[:-1]
+		vec1=[]
+		vec2=[]
+		for x in range(half):
+			for replica in _dict[list1[x]]:
+				count=_dict[list1[x]][replica]
+				for c in range(count):
+					vec1.append(replica)
+			# vec1=_dict[list1[x]].keys()
+			for replica in _dict[list2[x]]:
+				count=_dict[list2[x]][replica]
+				for c in range(count):
+					vec2.append(replica)
+			# vec2=_dict[list2[x]].keys()
+			result=cosSimilarity(vec1,vec2)
+			# print (approachName,cdn,result)
+			if cdn not in dict:
+				dict[cdn]={}
+			if approachName not in dict[cdn]:
+				dict[cdn][approachName]=[]
+			dict[cdn][approachName].append(result)
+	return dict
+
+
+def self_similarity(file,approachName):
+	dict={}
+	cdns=["Google","Amazon CloudFront","Fastly"]
+	for cdn in file:
+		if cdn not in cdns:
+			continue
+		vec1=[]
+		vec2=[]
+		_dict=ip_prefix_grouping(file[cdn],"/24")
+		for domain in _dict:
+			ind=random.randint(0,2)
+			if ind==0:
+				vec1=vec1+list(_dict[domain].keys())
+			else:
+				vec2=vec2+list(_dict[domain].keys())
+		result=cosSimilarity(vec1,vec2)
+		print (approachName,cdn,result)
 
 def runCosineSimilarity(domains,local,distant,cdnMapping,filename):
 	dict={}
@@ -140,8 +207,12 @@ def runAnalysis(country,domains,local,distant,cdnMapping):
 	runCosineSimilarity(domains,local,distant,cdnMapping,"cosineSimilarity_"+country)
 
 
-	ip_prefix_grouping("local",local,country,"/24","ip_24_grouping_")
-	ip_prefix_grouping("distant",distant,country,"/24","ip_24_grouping_")
+	_dict=ip_prefix_grouping("local",local,country,"/24","ip_24_grouping_")
+	with open("results/"+"ip_24_grouping_local"+"_"+country+".json", 'w') as fp:
+		json.dump(_dict, fp)
+	_dict=ip_prefix_grouping("distant",distant,country,"/24","ip_24_grouping_")
+	with open("results/"+"ip_24_grouping_distant"+"_"+country+".json", 'w') as fp:
+		json.dump(_dict, fp)
 
 	local_24=json.load(open("results/ip_24_grouping_local_"+country+".json"))
 	distant_24=json.load(open("results/ip_24_grouping_distant_"+country+".json"))
@@ -149,8 +220,12 @@ def runAnalysis(country,domains,local,distant,cdnMapping):
 	runCosineSimilarity(domains,local_24,distant_24,cdnMapping,"cosSim_24_"+country)
 
 
-	ip_prefix_grouping("local",local,country,"/20","ip_20_grouping_")
-	ip_prefix_grouping("distant",distant,country,"/20","ip_20_grouping_")
+	_dict=ip_prefix_grouping("local",local,country,"/20","ip_20_grouping_")
+	with open("results/"+"ip_20_grouping_local"+"_"+country+".json", 'w') as fp:
+		json.dump(_dict, fp)
+	_dict=ip_prefix_grouping("distant",distant,country,"/20","ip_20_grouping_")
+	with open("results/"+"ip_20_grouping_distant"+"_"+country+".json", 'w') as fp:
+		json.dump(_dict, fp)
 
 	local_20=json.load(open("results/ip_20_grouping_local_"+country+".json"))
 	distant_20=json.load(open("results/ip_20_grouping_distant_"+country+".json"))
@@ -163,6 +238,10 @@ if __name__ == "__main__":
 	distant=json.load(open("results/dnsRipeResult_distant_"+country+".json"))
 	domains=json.load(open("data/uniqueDomains"+country+".json"))
 	cdnMapping=json.load(open("data/cdn_mapping_"+country+".json"))
+	
+	local_cdnized=json.load(open("results/dnsRipeResult_local_cdnized_"+country+".json"))
+	distant_cdnized=json.load(open("results/dnsRipeResult_distant_cdnized_"+country+".json"))
+
 
 	cdnMap={}
 	file1 = open('data/cdnMap', 'r')
@@ -178,8 +257,19 @@ if __name__ == "__main__":
 
 	# use Aqsa's cdnMap to find cdn
 	# findCDNs(domains,cdnMap,country)
+	cdns=["Google","Amazon CloudFront","Fastly"]
 
 	runAnalysis(country,domains,local,distant,cdnMapping)
+
+
+	self_similarityDict={}
+	self_similarityDict=self_similarity2(local_cdnized,"local",self_similarityDict,cdns)
+	self_similarityDict=self_similarity2(distant_cdnized,"distant",self_similarityDict,cdns)
+
+	with open("results/self_similarityDict"+"_"+country+".json", 'w') as fp:
+		json.dump(self_similarityDict, fp)
+
+
 
 	
 	
