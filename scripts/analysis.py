@@ -92,6 +92,51 @@ def self_similarity2(file,approachName,dict,cdns):
 			dict[cdn][approachName].append(result)
 	return dict
 
+def self_similarity3(file,approachName,dict,cdns):
+	for cdn in file:
+		if cdn not in cdns:
+			continue
+		_dict=file[cdn]
+		domainList=[]
+		for domain in _dict.keys():
+			ids=[]
+			for id in _dict[domain]:
+				ids.append(id)
+			random.shuffle(ids)
+			half=int(len(ids)/2)
+			print (domain,len(ids))
+			list1=ids[:half]
+			list2=ids[half:]
+			# print (domain,list1,list2)
+
+			if len(list1)>len(list2):
+				list1=list1[:-1]
+			elif len(list1)<len(list2):
+				list2=list2[:-1]
+			vec1=[]
+			vec2=[]
+			if len(list1)<1 and len(list2)<1:
+				continue
+			for id in list1:
+				for replica in _dict[domain][id]:
+					host4 = ipaddress.ip_interface(replica+"/24")
+					ip_24_prefix=str(host4.network)
+					vec1.append(ip_24_prefix)
+
+			for id in list2:
+				for replica in _dict[domain][id]:
+					host4 = ipaddress.ip_interface(replica+"/24")
+					ip_24_prefix=str(host4.network)
+					vec2.append(ip_24_prefix)
+			result=cosSimilarity(vec1,vec2)
+			# print (result)
+			if cdn not in dict:
+				dict[cdn]={}
+			if approachName not in dict[cdn]:
+				dict[cdn][approachName]=[]
+			dict[cdn][approachName].append(result)
+		
+	return dict
 
 def self_similarity(file,approachName):
 	dict={}
@@ -196,6 +241,7 @@ def findCDNs(domains,cdnMap,country):
 	with open("data/missingCdnizedDomains_"+country+".json", 'w') as fp:
 		json.dump(missing, fp)
 
+
 def runAnalysis(country,domains,local,distant,cdnMapping):
 	for domain in domains:
 		if domain in distant and domain in local:
@@ -207,10 +253,13 @@ def runAnalysis(country,domains,local,distant,cdnMapping):
 	runCosineSimilarity(domains,local,distant,cdnMapping,"cosineSimilarity_"+country)
 
 
-	_dict=ip_prefix_grouping("local",local,country,"/24","ip_24_grouping_")
+	# _dict=ip_prefix_grouping("local",local,country,"/24","ip_24_grouping_")
+	_dict=ip_prefix_grouping(local,"/24")
 	with open("results/"+"ip_24_grouping_local"+"_"+country+".json", 'w') as fp:
 		json.dump(_dict, fp)
-	_dict=ip_prefix_grouping("distant",distant,country,"/24","ip_24_grouping_")
+
+	_dict=ip_prefix_grouping(distant,"/24")
+	# _dict=ip_prefix_grouping("distant",distant,country,"/24","ip_24_grouping_")
 	with open("results/"+"ip_24_grouping_distant"+"_"+country+".json", 'w') as fp:
 		json.dump(_dict, fp)
 
@@ -220,10 +269,13 @@ def runAnalysis(country,domains,local,distant,cdnMapping):
 	runCosineSimilarity(domains,local_24,distant_24,cdnMapping,"cosSim_24_"+country)
 
 
-	_dict=ip_prefix_grouping("local",local,country,"/20","ip_20_grouping_")
+	# _dict=ip_prefix_grouping("local",local,country,"/20","ip_20_grouping_")
+	_dict=ip_prefix_grouping(local,"/20")
 	with open("results/"+"ip_20_grouping_local"+"_"+country+".json", 'w') as fp:
 		json.dump(_dict, fp)
-	_dict=ip_prefix_grouping("distant",distant,country,"/20","ip_20_grouping_")
+
+	# _dict=ip_prefix_grouping("distant",distant,country,"/20","ip_20_grouping_")
+	_dict=ip_prefix_grouping(distant,"/20")
 	with open("results/"+"ip_20_grouping_distant"+"_"+country+".json", 'w') as fp:
 		json.dump(_dict, fp)
 
@@ -239,8 +291,10 @@ if __name__ == "__main__":
 	domains=json.load(open("data/uniqueDomains"+country+".json"))
 	cdnMapping=json.load(open("data/cdn_mapping_"+country+".json"))
 	
-	local_cdnized=json.load(open("results/dnsRipeResult_local_cdnized_"+country+".json"))
-	distant_cdnized=json.load(open("results/dnsRipeResult_distant_cdnized_"+country+".json"))
+	# local_cdnized=json.load(open("results/dnsRipeResult_local_cdnized_"+country+".json"))
+	local_cdnized=json.load(open("results/dnsRipeResultPerQuery_local_"+country+".json"))
+
+	distant_cdnized=json.load(open("results/dnsRipeResultPerQuery_distant_"+country+".json"))
 
 
 	cdnMap={}
@@ -257,18 +311,19 @@ if __name__ == "__main__":
 
 	# use Aqsa's cdnMap to find cdn
 	# findCDNs(domains,cdnMap,country)
-	cdns=["Google","Amazon CloudFront","Fastly"]
+	cdns=["Google","Amazon CloudFront","Fastly","Akamai"]
+	# cdns=["Google"]
 
-	runAnalysis(country,domains,local,distant,cdnMapping)
-
+	# runAnalysis(country,domains,local,distant,cdnMapping)
 
 	self_similarityDict={}
-	self_similarityDict=self_similarity2(local_cdnized,"local",self_similarityDict,cdns)
-	self_similarityDict=self_similarity2(distant_cdnized,"distant",self_similarityDict,cdns)
+	self_similarityDict=self_similarity3(local_cdnized,"local",self_similarityDict,cdns)
+	self_similarityDict=self_similarity3(distant_cdnized,"distant",self_similarityDict,cdns)
 
 	with open("results/self_similarityDict"+"_"+country+".json", 'w') as fp:
 		json.dump(self_similarityDict, fp)
 
+	
 
 
 	

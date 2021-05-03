@@ -37,7 +37,7 @@ def cdn_Resources(country,cdn):
         # if resource not in resultFile:
             # resources.append(resource)
     # return resources
-    return cdnMap[cdn][8:]
+    return cdnMap[cdn]
 
 
 def uniqueDomains(file,country):
@@ -60,7 +60,10 @@ def url_to_domain(url):
     return ".".join(ext)
 
 def runMeasurements(_type,country,domainList,runs):
-    dnsServers=["182.19.95.34","203.201.60.12","223.31.121.171","182.71.213.139","111.93.163.56"]
+    # dnsServers=["182.19.95.34","203.201.60.12","223.31.121.171","182.71.213.139","111.93.163.56"] #resolvers in India
+    dnsServers=["190.151.144.21","200.55.54.234","200.110.130.194","157.92.190.15","179.60.235.209"] #resolvers in AR
+
+
     tryTimes=0
     try:
         measurement_ids=json.load(open("results/dnsRipeMsmIds_"+_type+"_"+country+".json"))
@@ -94,7 +97,7 @@ def runMeasurements(_type,country,domainList,runs):
                 # value="WW",
                 type="country",
                 value="US",
-                requested=10,
+                requested=1,
                 tags={"include":["system-ipv4-works"]}
             )
 
@@ -115,7 +118,7 @@ def runMeasurements(_type,country,domainList,runs):
                 # break
             else:
                 # tryTimes+=1
-                print ("failed to create measurement: %s" % response)
+                print ("failed to create measurement: %s" % response,domain,target)
                 # if tryTimes>=2:
                 raise Exception("failed to create measurement: %s" % response)
                 # time.sleep(10)
@@ -128,12 +131,17 @@ def runMeasurements(_type,country,domainList,runs):
                 json.dump(measurement_ids, fp)
     # return measurement_ids
 
-def FetchResults(_type,country,domainList): 
-    measurement_ids=json.load(open("results/dnsRipeMsmIds_"+_type+"_"+country+".json"))
+def FetchResults(_type,country,domainList,cdn): 
+    try:
+        measurement_ids=json.load(open("results/dnsRipeMsmIds_"+_type+"_"+country+".json"))
+    except:
+        return
     try: 
-        dict=json.load(open("results/dnsRipeResult_"+_type+"_"+country+".json"))
+        dict=json.load(open("results/dnsRipeResultPerQuery_"+_type+"_"+country+".json"))
     except:
         dict={}  
+    if cdn not in dict:
+        dict[cdn]={}
     for domain,id in measurement_ids:
         if domain not in domainList:
             continue
@@ -158,29 +166,34 @@ def FetchResults(_type,country,domainList):
         except Exception as e:
             print ("Couldn't decode the answer: ",domain,id, str(e))
             continue
+        if domain not in dict[cdn]:
+            dict[cdn][domain]={}
+        if id not in dict[cdn][domain]:
+            dict[cdn][domain][id]=[]
+        else:
+            continue   
 
         for result in dnsAnswer:
             try:
                 ip_addr=result.address
-                if domain not in dict:
-                    dict[domain]={}
-                if ip_addr not in dict[domain]:
-                    dict[domain][ip_addr]=0
+                dict[cdn][domain][id].append(ip_addr)
+                # if ip_addr not in dict[domain]:
+                #     dict[domain][ip_addr]=0
 
-                dict[domain][ip_addr]+=1
+                # dict[domain][ip_addr]+=1
 
             except Exception as e:
                 # print (domain,id,result, str(e))
                 continue
         
-    with open("results/dnsRipeResult_"+_type+"_"+country+".json", 'w') as fp:
+    with open("results/dnsRipeResultPerQuery_"+_type+"_"+country+".json", 'w') as fp:
         json.dump(dict, fp)
 
-# distant run 152th index of unique domains.
-#local run 15th onwards 
+# distant run from 51th index of unique domains.
+#local done 
 if __name__ == "__main__":
     # runMeasurements(_type,"US",domainList,5)
-    country="US"
+    country="AR" #set country for resolvers
     _type="distant" #change probe resolver, value of target and number of resolvers too
     start=0
     # end=55
@@ -191,14 +204,17 @@ if __name__ == "__main__":
     # fulldomainList=uniqueDomains("AlexaUniqueResourcesUS.txt",country)
 
     #if want to use domainList of a cdn
-    fulldomainList=cdn_Resources(country,"Akamai")
+    cdn="Fastly"
+    fulldomainList=cdn_Resources("US",cdn)
+    # print (len(fulldomainList),fulldomainList)   
 
 
-    # for x in range(start,len(fulldomainList),3):
-    for x in range(start,55,3):
+
+    for x in range(start,len(fulldomainList),3):
+    # for x in range(start,59,3):
 
         # domainList=uniqueDomains("AlexaUniqueResourcesUS.txt",country)
-        domainList=cdn_Resources(country,"Akamai")
+        domainList=cdn_Resources("US",cdn)
         start=x
         end=start+3
         print (start,end)
@@ -206,7 +222,11 @@ if __name__ == "__main__":
         domainList=domainList[start:end]
         print (domainList)
         while 1: 
-            measurement_ids=json.load(open("results/dnsRipeMsmIds_"+_type+"_"+country+".json"))
+            try:
+                measurement_ids=json.load(open("results/dnsRipeMsmIds_"+_type+"_"+country+".json"))
+            except Exception as e:
+                print (str(e))
+                measurement_ids={}
             dict={}
             breakingCond=0
             for domain,id in measurement_ids:
@@ -223,10 +243,23 @@ if __name__ == "__main__":
                 break
             print ("Starting to run for: ",runs," domainList indexes",start,end)
             try:
-                runMeasurements(_type,"US",domainList,runs)
+                runMeasurements(_type,country,domainList,runs)
             except:
                 time.sleep(300)
-            FetchResults(_type,country,domainList)
+            FetchResults(_type,country,domainList,cdn)
+    # FetchResults(_type,country,fulldomainList,cdn)
 
-    FetchResults(_type,country,domainList)
+    # fulldomainList=cdn_Resources(country,"Akamai")
+    # FetchResults(_type,country,fulldomainList,"Akamai")
+
+    # fulldomainList=cdn_Resources(country,"Google")
+    # FetchResults(_type,country,fulldomainList,"Google")
+
+    # fulldomainList=cdn_Resources(country,"Fastly")
+    # FetchResults(_type,country,fulldomainList,"Fastly")
+
+    # fulldomainList=cdn_Resources(country,"Amazon CloudFront")
+    # FetchResults(_type,country,fulldomainList,"Amazon CloudFront")
+
+
 

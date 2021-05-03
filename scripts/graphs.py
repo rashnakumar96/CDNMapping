@@ -58,7 +58,6 @@ def plot_self_similarity2(dict,cdn):
 	plt.savefig("graphs/self_cosine_similarityCDF"+cdn)
 	plt.clf()
 
-
 if __name__ == "__main__":
 
 	country="US"
@@ -140,6 +139,5 @@ if __name__ == "__main__":
 
 	for cdn in cdns:
 		plot_self_similarity2(self_similarityDict,cdn)
-
 	
 
