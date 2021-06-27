@@ -8,6 +8,7 @@ import matplotlib as mpl
 mpl.use("agg")
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 
 
 
@@ -49,48 +50,6 @@ def ip_prefix_grouping(file,prefix):
 				uniquePrefixes[ip_24_prefix]+=file[domain][ip]
 		dict[domain]=uniquePrefixes
 	return dict
-	
-
-def self_similarity2(file,approachName,dict,cdns):
-	for cdn in file:
-		if cdn not in cdns:
-			continue
-		_dict=ip_prefix_grouping(file[cdn],"/24")
-		print (cdn,len(_dict.keys()))
-		domainList=[]
-		for domain in _dict.keys():
-			domainList.append(domain)
-
-		random.shuffle(domainList)
-
-		half=int(len(domainList)/2)
-		list1=domainList[:half]
-		list2=domainList[half:]
-		if len(list1)>len(list2):
-			list1=list1[:-1]
-		elif len(list1)<len(list2):
-			list2=list2[:-1]
-		vec1=[]
-		vec2=[]
-		for x in range(half):
-			for replica in _dict[list1[x]]:
-				count=_dict[list1[x]][replica]
-				for c in range(count):
-					vec1.append(replica)
-			# vec1=_dict[list1[x]].keys()
-			for replica in _dict[list2[x]]:
-				count=_dict[list2[x]][replica]
-				for c in range(count):
-					vec2.append(replica)
-			# vec2=_dict[list2[x]].keys()
-			result=cosSimilarity(vec1,vec2)
-			# print (approachName,cdn,result)
-			if cdn not in dict:
-				dict[cdn]={}
-			if approachName not in dict[cdn]:
-				dict[cdn][approachName]=[]
-			dict[cdn][approachName].append(result)
-	return dict
 
 def self_similarity3(file,approachName,dict,cdns):
 	for cdn in file:
@@ -99,12 +58,15 @@ def self_similarity3(file,approachName,dict,cdns):
 		_dict=file[cdn]
 		domainList=[]
 		for domain in _dict.keys():
+			if domain!="youtube.com":
+				continue
 			ids=[]
 			for id in _dict[domain]:
 				ids.append(id)
 			random.shuffle(ids)
 			half=int(len(ids)/2)
 			print (domain,len(ids))
+			exit()
 			list1=ids[:half]
 			list2=ids[half:]
 			# print (domain,list1,list2)
@@ -121,12 +83,14 @@ def self_similarity3(file,approachName,dict,cdns):
 				for replica in _dict[domain][id]:
 					host4 = ipaddress.ip_interface(replica+"/24")
 					ip_24_prefix=str(host4.network)
+					# if ip_24_prefix not in vec1:
 					vec1.append(ip_24_prefix)
 
 			for id in list2:
 				for replica in _dict[domain][id]:
 					host4 = ipaddress.ip_interface(replica+"/24")
 					ip_24_prefix=str(host4.network)
+					# if ip_24_prefix not in vec2:
 					vec2.append(ip_24_prefix)
 			result=cosSimilarity(vec1,vec2)
 			# print (result)
@@ -138,23 +102,6 @@ def self_similarity3(file,approachName,dict,cdns):
 		
 	return dict
 
-def self_similarity(file,approachName):
-	dict={}
-	cdns=["Google","Amazon CloudFront","Fastly"]
-	for cdn in file:
-		if cdn not in cdns:
-			continue
-		vec1=[]
-		vec2=[]
-		_dict=ip_prefix_grouping(file[cdn],"/24")
-		for domain in _dict:
-			ind=random.randint(0,2)
-			if ind==0:
-				vec1=vec1+list(_dict[domain].keys())
-			else:
-				vec2=vec2+list(_dict[domain].keys())
-		result=cosSimilarity(vec1,vec2)
-		print (approachName,cdn,result)
 
 def runCosineSimilarity(domains,local,distant,cdnMapping,filename):
 	dict={}
@@ -162,8 +109,16 @@ def runCosineSimilarity(domains,local,distant,cdnMapping,filename):
 	vec2=[]
 	for domain in domains:
 		try:
-			vec1=list(local[domain].keys())
-			vec2=list(distant[domain].keys())
+			vec1=[]
+			vec2=[]
+			for replica in local[domain]:
+				for x in range(local[domain][replica]):
+					vec1.append(replica)
+			for replica in distant[domain]:
+				for x in range(distant[domain][replica]):
+					vec2.append(replica)
+			# vec1=list(local[domain].keys())
+			# vec2=list(distant[domain].keys())
 		except:
 			continue
 		result=cosSimilarity(vec1,vec2)
@@ -241,17 +196,213 @@ def findCDNs(domains,cdnMap,country):
 	with open("data/missingCdnizedDomains_"+country+".json", 'w') as fp:
 		json.dump(missing, fp)
 
+def dnsRipeResult(country,_type):
+	resultPerQuery=json.load(open("results/dnsRipeResultPerQuery_"+_type+"_"+country+".json"))
+	dict={}
+	for cdn in resultPerQuery:
+		for domain in resultPerQuery[cdn]:
+			if domain not in dict:
+				dict[domain]={}
+			for _id in resultPerQuery[cdn][domain]:
+				for replica in resultPerQuery[cdn][domain][_id]:
+					if replica not in dict[domain]:
+						dict[domain][replica]=1
+					else:
+						dict[domain][replica]+=1
+	with open("results/dnsRipeResult_"+_type+"_"+country+".json", 'w') as fp:
+		json.dump(dict, fp)
+
+def calculateLatency(country):
+	#results storing for local in US and distant in AR
+	ripeResultTracerouteLocal=json.load(open("results/tracerouteRipeResult_local_"+country+".json"))
+	localCommonPrefixes=json.load(open("results/localCommonPrefixes_"+country+".json"))
+	distantCommonPrefixes=json.load(open("results/distantCommonPrefixes_"+country+".json"))
+	
+	local={}
+	hopsDict={}
+	rttDict={}
+	for cdn in ripeResultTracerouteLocal:
+		if cdn not in hopsDict:
+			hopsDict[cdn]={}
+			hopsDict[cdn]["local"]=[]
+			rttDict[cdn]={}
+			rttDict[cdn]["local"]=[]
+		if cdn not in local:
+			local[cdn]={}
+		for prefix in localCommonPrefixes[cdn]:
+			if prefix not in local[cdn]:
+				local[cdn][prefix]={}
+				local[cdn][prefix]["hops"]=[]
+				local[cdn][prefix]["rtt"]=[]
+			for run in ripeResultTracerouteLocal[cdn][prefix]:
+				try:
+					hops=len(run[0]["result"])
+					local[cdn][prefix]["hops"].append(hops)
+				except:
+					a=1
+					# continue
+				try:
+					rttStart=run[0]["timestamp"]
+					rttEnd=run[0]["endtime"]
+					rtt=rttEnd-rttStart
+					# print (rttStart,rttEnd,rtt)
+					local[cdn][prefix]["rtt"].append(rtt)
+					print (local[cdn][prefix]["rtt"],rtt)
+				except:
+					a=1
+			hopsDict[cdn]["local"].append(np.median(local[cdn][prefix]["hops"]))
+			rttDict[cdn]["local"].append(np.median(local[cdn][prefix]["rtt"]))
+
+			# if cdn =="Akamai":
+			# 	print(prefix,np.median(local[cdn][prefix]))
+			# medianLatencies.append(np.median(local[cdn][prefix]))
+
+		# break
+	print ("\n\n")
+	distant={}
+	ripeResultTracerouteDistant=json.load(open("results/tracerouteRipeResult_distant_"+country+".json"))
+	for cdn in ripeResultTracerouteDistant:
+		if "distant" not in hopsDict[cdn]:
+			hopsDict[cdn]["distant"]=[]
+			rttDict[cdn]["distant"]=[]
+		if cdn not in distant:
+			distant[cdn]={}
+		for prefix in distantCommonPrefixes[cdn]:
+			if prefix not in distant[cdn]:
+				distant[cdn][prefix]={}
+				distant[cdn][prefix]["hops"]=[]
+				distant[cdn][prefix]["rtt"]=[]
+
+			for run in ripeResultTracerouteDistant[cdn][prefix]:
+				try:
+					hops=len(run[0]["result"])
+					distant[cdn][prefix]["hops"].append(hops)
+				except:
+					a=1
+				try:
+					rttStart=run[0]["timestamp"]
+					rttEnd=run[0]["endtime"]
+					rtt=rttEnd-rttStart
+					distant[cdn][prefix]["rtt"].append(rtt)
+				except:
+					a=1
+			hopsDict[cdn]["distant"].append(np.median(distant[cdn][prefix]["hops"]))
+			rttDict[cdn]["distant"].append(np.median(distant[cdn][prefix]["rtt"]))
+
+
+			# if cdn =="Akamai":
+			# 	print(prefix,np.median(distant[cdn][prefix]))
+		# break
+	print ("hops",hopsDict["Akamai"])
+	print ("rtt",rttDict["Akamai"])
+
+	for cdn in hopsDict:
+		sortedDataLocal=np.sort(hopsDict[cdn]["local"])
+		pDataLocal=1. * np.arange(len(sortedDataLocal))/(len(sortedDataLocal)-1)
+
+		sortedDataDistant=np.sort(hopsDict[cdn]["distant"])
+		pDataDistant=1. * np.arange(len(sortedDataDistant))/(len(sortedDataDistant)-1)
+
+		plt.plot(sortedDataLocal,pDataLocal,color='c',label="AR_local;/24 Prefix")
+		plt.plot(sortedDataDistant,pDataDistant,color='m',label="AR_distant;/24 Prefix")
+
+		plt.legend()
+		plt.title(cdn)
+		plt.ylabel("CDF")
+		plt.xlabel("HopCount")
+		plt.margins(0.02)
+		if not os.path.exists("graphs/localvsdistant"):
+			os.mkdir("graphs/localvsdistant")
+		plt.savefig("graphs/localvsdistant/tracerouteHops"+cdn)
+
+		plt.clf()
+
+	for cdn in rttDict:
+		sortedDataLocal=np.sort(rttDict[cdn]["local"])
+		pDataLocal=1. * np.arange(len(sortedDataLocal))/(len(sortedDataLocal)-1)
+
+		sortedDataDistant=np.sort(rttDict[cdn]["distant"])
+		pDataDistant=1. * np.arange(len(sortedDataDistant))/(len(sortedDataDistant)-1)
+
+		plt.plot(sortedDataLocal,pDataLocal,color='c',label="AR_local;/24 Prefix")
+		plt.plot(sortedDataDistant,pDataDistant,color='m',label="AR_distant;/24 Prefix")
+
+		plt.legend()
+		plt.title(cdn)
+		plt.ylabel("CDF")
+		plt.xlabel("RTTCount")
+		plt.margins(0.02)
+		if not os.path.exists("graphs/localvsdistant"):
+			os.mkdir("graphs/localvsdistant")
+		plt.savefig("graphs/localvsdistant/tracerouteRTT"+cdn)
+
+		plt.clf()
+
+	# print (local)		
+def commonPrefixes(cdns):
+	cdns=["Google","Amazon CloudFront","Fastly","Akamai"]
+	cdnMapping=json.load(open("data/cdn_mapping_"+country+".json"))
+
+	local_24=json.load(open("results/ip_24_grouping_local_US.json"))
+	distant_24_IN=json.load(open("results/ip_24_grouping_distant_US.json"))
+	distant_24_AR=json.load(open("results/ip_24_grouping_distant_AR.json"))
+
+	local_dict={}
+	distant_IN={}
+	distant_AR={}
+	for cdn in cdns:
+		if cdn not in local_dict:
+			local_dict[cdn]={}
+		if cdn not in distant_IN:
+			distant_IN[cdn]={}
+		if cdn not in distant_AR:
+			distant_AR[cdn]={}
+
+		for domain in cdnMapping[cdn]:
+			try:
+				for prefix in local_24[domain]:
+					if prefix.split("/24")[0] in local_dict[cdn]:
+						local_dict[cdn][prefix.split("/24")[0]]+=local_24[domain][prefix]
+					else:
+						local_dict[cdn][prefix.split("/24")[0]]=local_24[domain][prefix]
+
+				for prefix in distant_24_IN[domain]:
+					if prefix.split("/24")[0] in distant_IN[cdn]:
+						distant_IN[cdn][prefix.split("/24")[0]]+=distant_24_IN[domain][prefix]
+					else:
+						distant_IN[cdn][prefix.split("/24")[0]]=distant_24_IN[domain][prefix]
+
+				for prefix in distant_24_AR[domain]:
+					if prefix.split("/24")[0] in distant_AR[cdn]:
+						distant_AR[cdn][prefix.split("/24")[0]]+=distant_24_AR[domain][prefix]
+					else:
+						distant_AR[cdn][prefix.split("/24")[0]]=distant_24_AR[domain][prefix]
+			except:
+				print (cdn,domain)
+				continue
+	popularLocal={}
+	popularDistant_IN={}
+	popularDistant_AR={}
+	for cdn in cdns:
+		_min=min([len(local_dict[cdn]),len(distant_IN[cdn]),len(distant_AR[cdn])])
+		print (cdn,_min)
+		sortedlocal = sorted(local_dict[cdn], key=local_dict[cdn].get, reverse=True)[:_min]
+		sorteddistant_IN = sorted(distant_IN[cdn], key=distant_IN[cdn].get, reverse=True)[:_min]
+		sorteddistant_AR = sorted(distant_AR[cdn], key=distant_AR[cdn].get, reverse=True)[:_min]
+		popularLocal[cdn]=sortedlocal
+		popularDistant_IN[cdn]=sorteddistant_IN
+		popularDistant_AR[cdn]=sorteddistant_AR
+
+	with open("results/"+"localCommonPrefixes_US.json", 'w') as fp:
+		json.dump(popularLocal, fp)
+	with open("results/"+"distantCommonPrefixes_IN.json", 'w') as fp:
+		json.dump(popularDistant_IN, fp)
+	with open("results/"+"distantCommonPrefixes_AR.json", 'w') as fp:
+		json.dump(popularDistant_AR, fp)
 
 def runAnalysis(country,domains,local,distant,cdnMapping):
-	for domain in domains:
-		if domain in distant and domain in local:
-			for key in distant[domain].keys():
-				if key in local[domain].keys():
-					print (domain,key)
-					break
-
-	runCosineSimilarity(domains,local,distant,cdnMapping,"cosineSimilarity_"+country)
-
+	
+	# runCosineSimilarity(d omains,local,distant,cdnMapping,"cosineSimilarity_"+country)
 
 	# _dict=ip_prefix_grouping("local",local,country,"/24","ip_24_grouping_")
 	_dict=ip_prefix_grouping(local,"/24")
@@ -270,67 +421,85 @@ def runAnalysis(country,domains,local,distant,cdnMapping):
 
 
 	# _dict=ip_prefix_grouping("local",local,country,"/20","ip_20_grouping_")
-	_dict=ip_prefix_grouping(local,"/20")
-	with open("results/"+"ip_20_grouping_local"+"_"+country+".json", 'w') as fp:
-		json.dump(_dict, fp)
+	# _dict=ip_prefix_grouping(local,"/20")
+	# with open("results/"+"ip_20_grouping_local"+"_"+country+".json", 'w') as fp:
+	# 	json.dump(_dict, fp)
 
-	# _dict=ip_prefix_grouping("distant",distant,country,"/20","ip_20_grouping_")
-	_dict=ip_prefix_grouping(distant,"/20")
-	with open("results/"+"ip_20_grouping_distant"+"_"+country+".json", 'w') as fp:
-		json.dump(_dict, fp)
+	# # _dict=ip_prefix_grouping("distant",distant,country,"/20","ip_20_grouping_")
+	# _dict=ip_prefix_grouping(distant,"/20")
+	# with open("results/"+"ip_20_grouping_distant"+"_"+country+".json", 'w') as fp:
+	# 	json.dump(_dict, fp)
 
-	local_20=json.load(open("results/ip_20_grouping_local_"+country+".json"))
-	distant_20=json.load(open("results/ip_20_grouping_distant_"+country+".json"))
+	# local_20=json.load(open("results/ip_20_grouping_local_"+country+".json"))
+	# distant_20=json.load(open("results/ip_20_grouping_distant_"+country+".json"))
 
-	runCosineSimilarity(domains,local_20,distant_20,cdnMapping,"cosSim_20_"+country)
+	# runCosineSimilarity(domains,local_20,distant_20,cdnMapping,"cosSim_20_"+country)
 
 if __name__ == "__main__":
 	country="US"
-	local=json.load(open("results/dnsRipeResult_local_"+country+".json"))
-	distant=json.load(open("results/dnsRipeResult_distant_"+country+".json"))
+	# local=json.load(open("results/dnsRipeResult_local_"+country+".json"))
+	# distant=json.load(open("results/dnsRipeResult_distant_"+country+".json"))
 	domains=json.load(open("data/uniqueDomains"+country+".json"))
 	cdnMapping=json.load(open("data/cdn_mapping_"+country+".json"))
 	
-	# local_cdnized=json.load(open("results/dnsRipeResult_local_cdnized_"+country+".json"))
 	local_cdnized=json.load(open("results/dnsRipeResultPerQuery_local_"+country+".json"))
-
 	distant_cdnized=json.load(open("results/dnsRipeResultPerQuery_distant_"+country+".json"))
+	# cdnMap={}
+	# file1 = open('data/cdnMap', 'r')
+	# Lines = file1.readlines()
+	# for line in Lines:
+	# 	cdn=line.split(",")
+	# 	cdnMap[cdn[0]]=[]
+	# 	sites=cdn[1].split(" ")
+	# 	for site in sites:
+	# 		if '\n' in site:
+	# 			site=site.replace('\n','')
+	# 		cdnMap[cdn[0]].append(site)	
 
-
-	cdnMap={}
-	file1 = open('data/cdnMap', 'r')
-	Lines = file1.readlines()
-	for line in Lines:
-		cdn=line.split(",")
-		cdnMap[cdn[0]]=[]
-		sites=cdn[1].split(" ")
-		for site in sites:
-			if '\n' in site:
-				site=site.replace('\n','')
-			cdnMap[cdn[0]].append(site)
-
-	# use Aqsa's cdnMap to find cdn
-	# findCDNs(domains,cdnMap,country)
 	cdns=["Google","Amazon CloudFront","Fastly","Akamai"]
-	# cdns=["Google"]
-
+	#analysis results for cosine similarity
+	# dnsRipeResult(country,"distant")
+	# dnsRipeResult(country,"local")
+	# distant=json.load(open("results/dnsRipeResult_distant_"+country+".json"))
+	# local=json.load(open("results/dnsRipeResult_local_"+country+".json"))
 	# runAnalysis(country,domains,local,distant,cdnMapping)
 
-	self_similarityDict={}
-	self_similarityDict=self_similarity3(local_cdnized,"local",self_similarityDict,cdns)
-	self_similarityDict=self_similarity3(distant_cdnized,"distant",self_similarityDict,cdns)
+	# #analysis results for self similarity
+	# probeDict=json.load(open("results/probeDict_local"+"_"+country+".json"))
+	# for domain in probeDict:
+	# 	ids=[]
+	# 	count=0
+	# 	for probe in probeDict[domain]:
+	# 		count+=1
+	# 		for id in probeDict[domain][probe]:
+	# 			ids.append(id)
+	# 	print ("len of ids: ",len(ids)," probeCount= ",count)
+	# len of ids:  101  probeCount=  49 per domain
+	# cdns=["Google"]
+	# self_similarityDict={}
+	# self_similarityDict=self_similarity3(local_cdnized,"local",self_similarityDict,cdns)
+	# self_similarityDict=self_similarity3(distant_cdnized,"distant",self_similarityDict,cdns)
 
-	with open("results/self_similarityDict"+"_"+country+".json", 'w') as fp:
-		json.dump(self_similarityDict, fp)
 
-	
-
-
-	
-	
-	
-	
+	# with open("results/self_similarityDict_"+country+".json", 'w') as fp:
+	# 	json.dump(self_similarityDict, fp)
 	
 
-# {'youtube.com': 0.06950480468569159, 'www.youtube.com': 0.0}
-	
+	#run for Argentina
+	# countryD="AR"
+	# #analysis results for self similarity
+	# self_similarityDict={}
+	# distant_cdnized_AR=json.load(open("results/dnsRipeResultPerQuery_distant_"+countryD+".json"))
+	# self_similarityDict=self_similarity3(local_cdnized,"local",self_similarityDict,cdns)
+	# self_similarityDict=self_similarity3(distant_cdnized_AR,"distant",self_similarityDict,cdns)
+	# with open("results/self_similarityDict_"+countryD+".json", 'w') as fp:
+	# 	json.dump(self_similarityDict, fp)
+
+	# #analysis results for cosine similarity
+	# dnsRipeResult(countryD,"distant")
+	# distant=json.load(open("results/dnsRipeResult_distant_"+countryD+".json"))
+	# runAnalysis(countryD,domains,local,distant,cdnMapping)
+
+	# calculateLatency(countryD)
+	commonPrefixes(cdns)
+		
