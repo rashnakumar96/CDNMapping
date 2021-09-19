@@ -6,14 +6,18 @@ import os, time
 from webdriver_manager.chrome import ChromeDriverManager
 import urllib.request
 from os.path import isfile, join
-# import utils
+import tldextract
+import subprocess
+import dns.resolver
 
-# project_path = utils.project_path
+
+
+project_path=os.path.dirname(os.path.abspath(__file__))
 
 class Har_generator:
 	def __init__(self):
 		self.hars = []
-		self.server = Server(join(project_path, "analysis", "browsermob-proxy-2.1.4", "bin", "browsermob-proxy"))
+		self.server = Server(join(project_path, "browsermob-proxy-2.1.4", "bin", "browsermob-proxy"))
 		self.server.start()
 		self.proxy = self.server.create_proxy(params={"trustAllServers": "true"})
 		options = webdriver.ChromeOptions()
@@ -64,7 +68,9 @@ class Resource_collector:
 
 	def dump(self, fn_prefix,country):
 		print(join(fn_prefix,"alexaResources"+country+".json"))	
-		utils.dump_json(self.resources, join(fn_prefix,"alexaResources"+country+".json"))
+		# utils.dump_json(self.resources, join(fn_prefix,"alexaResources"+country+".json"))
+		with open(join(fn_prefix,"alexaResources"+country+".json"), 'w') as fp:
+			json.dump(self.resources, fp)
 
 		# utils.dump_json(self.resources, join(project_path,fn_prefix,"alexaResources"+country+".json"))
 
@@ -169,44 +175,172 @@ class Url_processor:
 								unique.append(resource)
 							
 			f.close()
-		
+
+def extractResources(region,file):
+	hm = Har_generator()
+	rc = Resource_collector()
+
+	allRegionalSites=json.load(open(file))
+	sites=allRegionalSites[region]
+	hars = hm.get_hars(sites)
+	rc.collect_resources(hars,region)
+	rc.dump(join("results", "sigcommRes",region), region)
+	del hm
+	del rc
+
+	resources=json.load(open("results/sigcommRes/"+region+"/alexaResources"+region+".json"))
+	all_domains=[]	
+	for resource in resources:
+		domain=url_to_domain(resource)
+		if 'www.' in domain:
+			domain=domain.replace('www.','')
+		if domain not in all_domains:
+			all_domains.append(domain)
+	with open(join("results/sigcommRes/"+region+"/alexaResourcesDomains"+region+".json"), 'w') as fp:
+		json.dump(all_domains, fp)
+
+def url_to_domain(url):
+    ext = tldextract.extract(url)
+    if ext[0] == '':
+        ext = ext[1:]
+    return ".".join(ext)
+
+def dump_json(data, fn):
+    with open(fn, 'w') as fp:
+        json.dump(data, fp)
+
+def populate_cdnMap():
+	cdn_map={}
+	file1 = open('data/cdnMap', 'r')
+	Lines = file1.readlines()
+
+	# Strips the newline character
+	for line in Lines:
+		cdn=line.split(",")
+		# print(cdn[0])
+		cdn_map[cdn[0]]=[]
+		sites=cdn[1].split(" ")
+		for site in sites:
+			if '\n' in site:
+				site=site.replace('\n','')
+			cdn_map[cdn[0]].append(site)
+	return cdn_map
+
+def findCDNCDNFinder(domain,domaincdnMap,cnameDomainMap,region):
+	print ("running cdnfinder for domain: ",domain)
+	try:
+		cmd='docker run -it turbobytes/cdnfinder cdnfindercli --phantomjsbin="/bin/phantomjs" --full http://'+domain
+		mycmd=subprocess.getoutput(cmd)
+		dict_response=str(mycmd).split("phantomjs is already installed")[1]
+		ans = json.loads(dict_response)
+		for _dict in ans['everything']:
+			domaincdnMap[domain]=_dict['cdn']
+			cnameDomainMap[domain]=_dict["cnames"]
+		dump_json(domaincdnMap,"data/CDNMaps/"+region+"/domainCDNMap.json")
+		dump_json(cnameDomainMap,"data/CDNMaps/"+region+"/cnameDomainMap.json")
+
+	except Exception as e:
+		print (domain," gives error with cdnfindercli",str(e))	
+		domaincdnMap[domain]=None
+		cnameDomainMap[domain]=[]
+		dump_json(domaincdnMap,"data/CDNMaps/"+region+"/domainCDNMap.json")
+		dump_json(cnameDomainMap,"data/CDNMaps/"+region+"/cnameDomainMap.json")	
+
+
 
 if __name__ == "__main__":
-	country="US"
-# def runResourceCollector(country):
-	# hm = Har_generator()
-	# rc = Resource_collector()
-
-	# print (project_path)
-
-	# top_sites = {}
-	# if not os.path.exists(join(project_path, "analysis", "measurements")):
-	# 	os.mkdir(join(project_path, "analysis", "measurements"))
 	
+	# region="North America_AR_IN"
+	region="Western Europe_SE_IN"
+	if not os.path.exists("results/sigcommRes/"+region):
+		os.mkdir("results/sigcommRes/"+region)
 
-	# if not os.path.exists(join(project_path, "analysis", "measurements", country)):
-	# 	os.mkdir(join(project_path, "analysis", "measurements", country))
-	
-	# top_sites=json.load(open(join(project_path, "data","alexaTop50SitesCountries.json")))
+	if not os.path.exists("data/CDNMaps/"+region):
+		os.mkdir("data/CDNMaps/"+region)
 
-	
-	# if country not in top_sites:
-	# 	print("ERROR: invalid country code or country provided does not have top site records")
-	# else:
-	# 	# if not os.path.exists(project_path+"/"+country):
-	# 	# 	os.mkdir(country)
-	# 	sites=[top_sites[country][x]["Site"] for x in range (len(top_sites[country]))]
-
-	# 	# hars = hm.get_hars(sites[:2])
-	# 	hars = hm.get_hars(sites)
-	# 	rc.collect_resources(hars,country)
-	# 	rc.dump(join(project_path, "analysis", "measurements", country), country)
-	# 	del hm
+	extractResources(region,"results/sigcommRes/overlapDict.json")
 
 
-	up=Url_processor(country)
-	up.find_cdn()
-	# up.collectPopularCDNResources(country)
-	# up.dump(join(project_path, "analysis", "measurements", country))
-	# up.dump("measurements/"+country)
-	del up
+	try:
+		domainCDNMap=json.load(open("data/CDNMaps/"+region+"/domainCDNMap.json"))
+	except:
+		domainCDNMap={}
+	try:
+		cnameDomainMap=json.load(open("data/CDNMaps/"+region+"/cnameDomainMap.json"))
+	except:
+		cnameDomainMap={}
+
+	all_domains=json.load(open("results/sigcommRes/"+region+"/alexaResourcesDomains"+region+".json"))
+
+	for domain in all_domains:
+		if domain in domainCDNMap and domain in cnameDomainMap:
+			continue
+		findCDNCDNFinder(domain,domainCDNMap,cnameDomainMap,region)
+
+	remainingResources=json.load(open("data/CDNMaps/"+region+"/domainCDNMap.json"))
+	_dictcnamemap=json.load(open("data/CDNMaps/"+region+"/cnameDomainMap.json"))
+	cdnmap=populate_cdnMap()
+	dump_json(cdnmap,'data/cdnMap.json')	
+	count=0
+	_dict={}
+	for domain in remainingResources:
+		if remainingResources[domain]!= None:
+			continue
+		count+=1
+		try:
+			result = dns.resolver.query(domain, 'CNAME')
+			cnames=[]
+			_cdn=""
+			for cnameval in result:
+				try:
+					cname=str(cnameval.target)
+					cnames.append(cname)
+					for cdn in cdnmap:
+						for cn in cdnmap[cdn]:
+							if cname in cn:
+								_cdn=cdn
+							if cn in cname:
+								_cdn=cdn
+					print (domain,cname,_cdn)
+					remainingResources[domain]=_cdn
+					_dictcnamemap[domain].append(cname)
+				except Exception as e:
+					print (str(e))
+					continue
+		except Exception as e:
+			continue	
+	dump_json(remainingResources,"data/CDNMaps/"+region+"/domainCDNMapUpdated.json")
+	dump_json(_dictcnamemap,"data/CDNMaps/"+region+"/cnameDomainMapUpdated.json")
+
+	cnameCDNDict={}
+	for domain in remainingResources:
+		if remainingResources[domain]== None:
+			continue
+		cdn=remainingResources[domain]
+		if cdn not in cnameCDNDict:
+			cnameCDNDict[cdn]=[]
+		cnames=_dictcnamemap[domain]
+		cnameCDNDict[cdn].append(cnames[-1])
+	dump_json(cnameCDNDict,"data/CDNMaps/"+region+"/cnameCDNMap.json")
+
+	cnameCDNDict=json.load(open("data/CDNMaps/"+region+"/cnameCDNMap.json"))
+	for cdn in cnameCDNDict:
+		if cdn=="Cloudfront":
+			cnameCDNDict["Amazon Cloudfront"]+=cnameCDNDict[cdn]
+	try:
+		del cnameCDNDict["Cloudfront"]
+	except Exception as e:
+		print (str(e))
+	for cdn in cnameCDNDict:
+		uniqueCnames=set(cnameCDNDict[cdn])
+		uniqueCnames=list(uniqueCnames)
+		cnameCDNDict[cdn]=uniqueCnames
+	dump_json(cnameCDNDict,"data/CDNMaps/"+region+"/cnameCDNMap.json")
+
+
+
+
+
+
+
+
