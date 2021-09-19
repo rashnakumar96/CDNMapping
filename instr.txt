@@ -1,0 +1,25 @@
+How to run CDN Mapping Code:
+
+Find common websites for client region, neigh region and non-neigh region (regionalSitesOverlap).
+Find the resources and the last cnames (resourceCollector.py)
+
+1. Run dnsRipe with probe selected and the vantage point selected
+region="North America_AR_IN"
+# probeId: 53868 (Wisconsin,US)
+#AR Probe=15780
+# IN Probe=50302
+    # Same Metro: use ripe local resolver
+    # target="149.112.112.112" #(same metro)
+    # target="209.250.128.6" #(same region)
+    # target="190.151.144.21" #(neighboring_region)
+    # target="182.19.95.34" #(non-neighboring_region)
+    target="8.8.8.8" #(remote_google)
+2. Run clusterIpsResults("North America") function in analysis.py to get ips.
+3. To add values in google sheet run the commented part of the above func.
+4. Run traceroutetype.py making sure country, region and probe selected are right and if there is a continue condition and if it’s needed.
+5. calculateLatencyRegional run this func from analysis.py to collect rtts
+6. plotrttDist("North America") run this func from analysis.py to make normal histograms and test.py and test1.py for log and equip-depth histograms.
+#"dnsUS_TRAR" for dnsRipe run from client in US,but traceroutes run from client in AR
+#"dnsUS_TRIN" for dnsRipe run from client in US,but traceroutes run from client in IN
+#"" for dnsRipe run from client in US,and traceroutes run from client in US
+
