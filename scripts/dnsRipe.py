@@ -57,7 +57,9 @@ def url_to_domain(url):
 def runMeasurements(_type,region,domainList,runs):
     # dnsServers=["182.19.95.34","203.201.60.12","223.31.121.171","182.71.213.139","111.93.163.56"] #resolvers in India
     # dnsServers=["190.151.144.21","200.55.54.234","200.110.130.194","157.92.190.15","179.60.235.209"] #resolvers in AR
-
+    _resolver_dict={"diff_metro":"82.96.64.2","same_region":"46.105.55.84","neighboring_region":"195.67.74.129",
+    "non-neighboring_region":"182.19.95.34","remote_google":"8.8.8.8"}
+    
     # probeId: 53868 (Wisconsin,US)
     # Same Metro: use ripe local resolver
     # target="149.112.112.112" #(same metro)
@@ -65,7 +67,7 @@ def runMeasurements(_type,region,domainList,runs):
     # target="190.151.144.21" #(neighboring_region)
     # target="182.19.95.34" #(non-neighboring_region)
     # target="8.8.8.8" #(remote_google)
-    target="local"
+    # target="local"
 
     tryTimes=0
     try:
@@ -79,7 +81,7 @@ def runMeasurements(_type,region,domainList,runs):
         for domain in domainList:    
             dns = Dns(
                 af=4,
-                # target=target,
+                target=_resolver_dict[_type],
                 description="Dns Resolution of CDNized Resources",
                 query_class="IN",
                 query_type="A",
@@ -87,8 +89,8 @@ def runMeasurements(_type,region,domainList,runs):
                 set_rd_bit= True, 
                 type= "dns", 
                 include_qbuf=True,
-                include_Abuf=True,
-                use_probe_resolver= True
+                include_Abuf=True
+                # use_probe_resolver= True
             )
 
             source = AtlasSource(
@@ -114,9 +116,9 @@ def runMeasurements(_type,region,domainList,runs):
             (is_success, response) = atlas_request.create()
             if is_success:
                 _id=response["measurements"]
-                print("SUCCESS: measurement created: %s" % response["measurements"],domain,target)
+                print("SUCCESS: measurement created: %s" % response["measurements"],domain,_resolver_dict[_type])
             else:
-                print ("failed to create measurement: %s" % response,domain,target)
+                print ("failed to create measurement: %s" % response,_resolver_dict[_type])
                 raise Exception("failed to create measurement: %s" % response)
 
             print (str(_id[0]))
@@ -202,70 +204,73 @@ if __name__ == "__main__":
     region="Western Europe_SE_IN" #set country for resolvers
     if not os.path.exists("results/sigcommRes/"+region):
         os.mkdir("results/sigcommRes/"+region)
-    # types=["local","remote_google","remote_metro","remote_same_region","remote_neighboring_region","remote_non-neighboring_region"]
     country=""
-    _type="local"+country #change probe resolver, value of target and number of resolvers too
-    # cdn="EdgeCast"
-    cnameDomainMap=json.load(open("data/CDNMaps/"+region+"/cnameDomainMapUpdated.json"))
-    file=json.load(open("data/CDNMaps/"+region+"/cnameCDNMap.json"))
-    # overlappingregion="North America_AR_IN"
-    # resources=json.load(open("results/sigcommRes/alexaResourcesDomains"+overlappingregion+".json"))
-    resources=json.load(open("results/sigcommRes/"+region+"/alexaResourcesDomains"+region+".json"))
-    cdns=["EdgeCast","Google","Fastly","Akamai","Amazon Cloudfront"]
 
-    for cdn in cdns:
-        fulldomainList=[]
-        for cname in file[cdn]:
-            for key in cnameDomainMap:
-                if cname in cnameDomainMap[key]:
-                    domain=key
-                    break
-            if domain in resources:
-                fulldomainList.append(cname)
-        print ("Len of fulldomainList: ",len(fulldomainList),len(file[cdn]))
+    types=["local","diff_metro","same_region","neighboring_region","non-neighboring_region","remote_google"]
 
-        ##############################################(test on 3 cnames)
-        # domainList=fulldomainList[:3]
-        # runMeasurements(_type,region,domainList,1)
-        # time.sleep(120)
-        # FetchResults(_type,region,domainList,cdn)
-        # break
-        ###############################################
-        
-        for x in range(0,len(fulldomainList),3):
-            start=x
-            end=start+3
-            print (start,end)
-            domainList=fulldomainList[start:end]
-            print (domainList)
-            while 1: 
-                try:
-                    measurement_ids=json.load(open("results/sigcommRes/"+region+"/dnsRipeMsmIds_"+_type+".json"))
-                except Exception as e:
-                    print (str(e))
-                    measurement_ids={}
-                dict={}
-                breakingCond=0
-                for domain,id in measurement_ids:
-                    if domain not in dict:
-                        dict[domain]=0
-                    dict[domain]+=1
+    for _type in types:
+        _type=_type+country #change probe resolver, value of target and number of resolvers too
+        # cdn="EdgeCast"
+        cnameDomainMap=json.load(open("data/CDNMaps/"+region+"/cnameDomainMapUpdated.json"))
+        file=json.load(open("data/CDNMaps/"+region+"/cnameCDNMap.json"))
+        # overlappingregion="North America_AR_IN"
+        # resources=json.load(open("results/sigcommRes/alexaResourcesDomains"+overlappingregion+".json"))
+        resources=json.load(open("results/sigcommRes/"+region+"/alexaResourcesDomains"+region+".json"))
+        cdns=["EdgeCast","Google","Fastly","Akamai","Amazon Cloudfront"]
 
-                if domainList[0] in dict:    
-                    runs=5-dict[domainList[0]]
-                else:
-                    runs=5
-                if runs<=0:
-                    print ("Done for the set: ",start,end)
-                    break
-                print ("Starting to run for: ",runs," domainList indexes",start,end)
-                try:
-                    runMeasurements(_type,region,domainList,runs)
-                except Exception as e:
-                    print ("Error in running measurements: ",str(e))
-                    time.sleep(300)
-                FetchResults(_type,region,domainList,cdn)
-        FetchResults(_type,region,fulldomainList,cdn)
+        for cdn in cdns:
+            fulldomainList=[]
+            for cname in file[cdn]:
+                for key in cnameDomainMap:
+                    if cname in cnameDomainMap[key]:
+                        domain=key
+                        break
+                if domain in resources:
+                    fulldomainList.append(cname)
+            print ("Len of fulldomainList: ",len(fulldomainList),len(file[cdn]))
+
+            ##############################################(test on 3 cnames)
+            # domainList=fulldomainList[:1]
+            # runMeasurements(_type,region,domainList,1)
+            # time.sleep(30)
+            # FetchResults(_type,region,domainList,cdn)
+            # break
+            ###############################################
+            
+            for x in range(0,len(fulldomainList),3):
+                start=x
+                end=start+3
+                print (start,end)
+                domainList=fulldomainList[start:end]
+                print (domainList)
+                while 1: 
+                    try:
+                        measurement_ids=json.load(open("results/sigcommRes/"+region+"/dnsRipeMsmIds_"+_type+".json"))
+                    except Exception as e:
+                        print (str(e))
+                        measurement_ids={}
+                    dict={}
+                    breakingCond=0
+                    for domain,id in measurement_ids:
+                        if domain not in dict:
+                            dict[domain]=0
+                        dict[domain]+=1
+
+                    if domainList[0] in dict:    
+                        runs=5-dict[domainList[0]]
+                    else:
+                        runs=5
+                    if runs<=0:
+                        print ("Done for the set: ",start,end)
+                        break
+                    print ("Starting to run for: ",runs," domainList indexes",start,end)
+                    try:
+                        runMeasurements(_type,region,domainList,runs)
+                    except Exception as e:
+                        print ("Error in running measurements: ",str(e))
+                        time.sleep(300)
+                    FetchResults(_type,region,domainList,cdn)
+            FetchResults(_type,region,fulldomainList,cdn)
 
     
 

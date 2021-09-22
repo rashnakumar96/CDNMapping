@@ -27,19 +27,20 @@ from ripe.atlas.cousteau import (
 )
 from os.path import isfile, join
 from copy import deepcopy
+import os
 
 
 
-def runMeasurements(_type,country,ips,runs):
+def runMeasurements(region,ips,runs,country):
    
     try:
-        measurement_ids=json.load(open("results/traceRouteRipeMsmIds_"+_type+"_"+country+".json"))
+        measurement_ids=json.load(open("results/sigcommRes/"+region+"/traceRouteRipeMsmIds_"+cdn+country+".json"))
     except:
         measurement_ids=[]
     for run in range(runs):     
         print ("Doing run: ",run)
-        if run!=0:
-            time.sleep(1*60)
+        # if run!=0:
+            # time.sleep(1*60)
         for target_ip in ips:
             traceroute=Traceroute(
                 af = 4,  # IPv4
@@ -54,8 +55,10 @@ def runMeasurements(_type,country,ips,runs):
             )
 
             source = AtlasSource(
-                type="country",
-                value="US",
+                # type="country",
+                # value="IN",
+                type="probes",
+                value=50302,
                 requested=1
             )
 
@@ -79,16 +82,19 @@ def runMeasurements(_type,country,ips,runs):
             print (str(_id[0]))
             measurement_ids.append((target_ip,str(_id[0])))
 
-            with open("results/traceRouteRipeMsmIds_"+_type+"_"+country+".json", 'w') as fp:
+            with open("results/sigcommRes/"+region+"/traceRouteRipeMsmIds_"+cdn+country+".json", 'w') as fp:
                 json.dump(measurement_ids, fp)
 
-def FetchResults(_type,country,cdn):
+def FetchResults(region,cdn,country):
     try:
-        measurement_ids=json.load(open("results/traceRouteRipeMsmIds_"+_type+"_"+country+".json"))
+        measurement_ids=json.load(open("results/sigcommRes/"+region+"/traceRouteRipeMsmIds_"+cdn+country+".json"))
+        print ("filename: ","results/sigcommRes/"+region+"/traceRouteRipeMsmIds_"+cdn+country+".json")
+        # return
     except:
         return
+    # dict={}
     try: 
-        dict=json.load(open("results/tracerouteRipeResult_"+_type+"_"+country+".json"))
+        dict=json.load(open("results/sigcommRes/"+region+"/traceroutes/tracerouteRipeResult"+country+".json"))
     except:
         dict={} 
 
@@ -111,58 +117,136 @@ def FetchResults(_type,country,cdn):
         operations=[]
         if is_success:
             # print ("results",results)
+
             for r in results:
                 result = deepcopy(r)
                 operations.append(result)
             dict[cdn][target_ip].append(operations)   
         else:
-            print ("Fetching wasn't successful: ",id, str(e))
-            continue
+            print ("Fetching wasn't successful: ",id)
+            continue     
         
-        
-    with open("results/tracerouteRipeResult_"+_type+"_"+country+".json", 'w') as fp:
+    with open("results/sigcommRes/"+region+"/traceroutes/tracerouteRipeResult"+country+".json", 'w') as fp:
         json.dump(dict, fp)
 
-def main(_type,cdns,Prefixes,country):
-    for cdn in cdns:
-        while 1:
-            try:
-                measurement_ids=json.load(open("results/traceRouteRipeMsmIds_"+_type+"_"+country+".json"))
-            except Exception as e:
-                print (str(e))
-                measurement_ids={}
-            dict={}
-            for _ip,id in measurement_ids:
-                if str(_ip) not in dict:
-                    dict[str(_ip)]=0
-                dict[str(_ip)]+=1
-            if Prefixes[cdn][0] in dict:    
-                runs=5-dict[Prefixes[cdn][0]]
-            else:
-                runs=5
-            if runs<=0:
-                print ("Done for the set: ",cdn,Prefixes[cdn])
-                break
-            print ("Starting to run for: ",runs,cdn)
-            try:
-                runMeasurements(_type,country,Prefixes[cdn],runs)
-            except:
-                time.sleep(300)
-            FetchResults(_type,country,cdn)
- 
+def main(cdn,ips,region,country):
+    # for x in range(0,len(ips),3):
+    #     start=x
+    #     end=start+3
+    #     print (start,end)
+    #     subset_ips=ips[start:end]
+    #     print (subset_ips)
+    #     while 1: 
+    #         try:
+    #             measurement_ids=json.load(open("results/sigcommRes/"+region+"/traceRouteRipeMsmIds_"+cdn+country+".json"))
+    #         except Exception as e:
+    #             print (str(e))
+    #             measurement_ids={}
+    #         dict={}
+    #         for _ip,id in measurement_ids:
+    #             if str(_ip) not in dict:
+    #                 dict[str(_ip)]=0
+    #             dict[str(_ip)]+=1
+
+    #         if subset_ips[0] in dict:    
+    #             runs=5-dict[subset_ips[0]]
+    #         else:
+    #             runs=5
+    #         if runs<=0:
+    #             print ("Done for the set: ",start,end)
+    #             break
+    #         print ("Starting to run for: ",runs," subset_ips indexes",start,end)
+    #         try:
+    #             runMeasurements(region,subset_ips,runs,country)
+    #         except Exception as e:
+    #             print ("Error in running measurements: ",str(e))
+    #             time.sleep(300)
+    #         if x%12==0:
+    #             FetchResults(region,cdn,country)
+    FetchResults(region,cdn,country)
+
+
 if __name__ == "__main__":
-    # runMeasurements(_type,"US",domainList,5)
-    # country="AR" #set country for resolvers
-    # cdns=["Google","Amazon CloudFront","Fastly","Akamai"]
-    cdns=["Google","Amazon CloudFront"]
-    localCommonPrefixes=json.load(open("results/localCommonPrefixes_AR.json"))
-    distantCommonPrefixes_IN=json.load(open("results/distantCommonPrefixes_IN.json"))
-    # country="US"
-    #do Google and Amazon
-    _type="local" 
-    main(_type,cdns,localCommonPrefixes,"US")
-    # _type="distant" 
-    # main(_type,cdns,distantCommonPrefixes_IN,"IN")
+    region="Western Europe_SE_IN"
+    cdnizedIpClusters=json.load(open("results/sigcommRes/"+region+"/cdnizedIpClusters.json"))
+    
+    cdns=["Google","Fastly","EdgeCast","Akamai","Amazon Cloudfront"]
+    # types=["local","remote_google","remote_metro","remote_same_region","remote_neighboring_region","remote_non-neighboring_region"]
+    types=["local","diff_metro","same_region","neighboring_region","non-neighboring_region"]
+
+    if not os.path.exists("results/sigcommRes/"+region+"/traceroutes"):
+        os.mkdir("results/sigcommRes/"+region+"/traceroutes")
+
+    # cdn="Akamai"
+    # country="" #for traceroutes and dnsRipe run from client in US
+    country="dnsDE_TRIN" #for dnsRipe run from client in US,but traceroutes run from client in IN
+    # country=""
+    for cdn in cdns:
+        ips=[]
+        for domain in cdnizedIpClusters[cdn]:
+            for _type in cdnizedIpClusters[cdn][domain]:
+                if _type not in types:
+                    continue
+                for ip in cdnizedIpClusters[cdn][domain][_type]:
+                    if ip not in ips:
+                        ips.append(ip)
+        print (ips,len(ips))
+        main(cdn,ips,region,country)
+
+    #####################################(to refetch traceroutes)
+    # cdns=["Amazon Cloudfront"]
+    # # # countries=["","AR","IN"]
+    # countries=[""]
+    # ips=[]
+    # for country in countries:
+    #     for cdn in cdns:
+    #         main(cdn,ips,region,country)
+
+
+
+
+
+##############################################################
+# def main(_type,cdns,Prefixes,region):
+#     for cdn in cdns:
+#         while 1:
+#             try:
+#                 measurement_ids=json.load(open("results/sigcommRes/"+region+"/traceRouteRipeMsmIds_"+_type+".json"))
+#             except Exception as e:
+#                 print (str(e))
+#                 measurement_ids={}
+#             dict={}
+#             for _ip,id in measurement_ids:
+#                 if str(_ip) not in dict:
+#                     dict[str(_ip)]=0
+#                 dict[str(_ip)]+=1
+#             if Prefixes[cdn][0] in dict:    
+#                 runs=5-dict[Prefixes[cdn][0]]
+#             else:
+#                 runs=5
+#             if runs<=0:
+#                 print ("Done for the set: ",cdn,Prefixes[cdn])
+#                 break
+#             print ("Starting to run for: ",runs,cdn)
+#             try:
+#                 runMeasurements(_type,region,Prefixes[cdn],runs)
+#             except:
+#                 time.sleep(300)
+#             FetchResults(_type,region,cdn)
+
+# if __name__ == "__main__":
+#     # runMeasurements(_type,"US",domainList,5)
+#     # country="AR" #set country for resolvers
+#     # cdns=["Google","Amazon CloudFront","Fastly","Akamai"]
+#     cdns=["Google","Amazon CloudFront"]
+#     localCommonPrefixes=json.load(open("results/localCommonPrefixes_AR.json"))
+#     distantCommonPrefixes_IN=json.load(open("results/distantCommonPrefixes_IN.json"))
+#     # country="US"
+#     #do Google and Amazon
+#     _type="local" 
+#     main(_type,cdns,localCommonPrefixes,"US")
+#     # _type="distant" 
+#     # main(_type,cdns,distantCommonPrefixes_IN,"IN")
 
         
 
