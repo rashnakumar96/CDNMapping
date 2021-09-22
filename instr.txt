@@ -19,7 +19,24 @@ region="North America_AR_IN"
 4. Run traceroutetype.py making sure country, region and probe selected are right and if there is a continue condition and if it’s needed.
 5. calculateLatencyRegional run this func from analysis.py to collect rtts
 6. plotrttDist("North America") run this func from analysis.py to make normal histograms and test.py and test1.py for log and equip-depth histograms.
+
+The following two are for removal of outliers due to platform limitations.
 #"dnsUS_TRAR" for dnsRipe run from client in US,but traceroutes run from client in AR
 #"dnsUS_TRIN" for dnsRipe run from client in US,but traceroutes run from client in IN
 #"" for dnsRipe run from client in US,and traceroutes run from client in US
+
+
+Region#2: Western Europe_SE_IN
+   probeid=53014(Hessen,DE)
+ # Same Metro: use ripe local resolver 
+    # target="82.96.64.2" #(same metro: Saarland, DE)
+    # target="46.105.55.84" #(same region,France)
+    # target="195.67.74.129" #(neighboring_region,Sweden)
+    # target="182.19.95.34" #(non-neighboring_region,IN)
+    target="8.8.8.8" #(remote_google)
+# US Probe=53868
+# AR Probe=15780
+# IN Probe=50302
+# DE Probe=53014
+# SE Probe=
 
